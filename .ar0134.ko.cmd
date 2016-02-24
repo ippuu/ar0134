@@ -1,0 +1,1 @@
+cmd_/home/ippuu/develop/example/x2_i2c_drv/ar0134.ko := arm-linux-gnueabi-ld -EL -r  -T /home/ippuu/linux/scripts/module-common.lds --build-id  -o /home/ippuu/develop/example/x2_i2c_drv/ar0134.ko /home/ippuu/develop/example/x2_i2c_drv/ar0134.o /home/ippuu/develop/example/x2_i2c_drv/ar0134.mod.o

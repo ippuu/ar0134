@@ -1,0 +1,244 @@
+//
+//AR0134 Image Sensor I2C Driver
+//
+//
+
+#include <linux/init.h>
+#include <linux/fs.h>
+#include <linux/errno.h>
+#include <linux/types.h>
+#include <linux/fcntl.h>
+#include <linux/slab.h>
+#include <linux/kernel.h>
+#include <linux/i2c.h>
+#include <linux/module.h>
+
+#include <asm/uaccess.h>
+#include <asm/io.h>
+#include <media/ar0134.h> //include/media/ar0134.h
+
+
+
+
+////////////////////////
+////
+#define DEBUG_MODE 1
+//
+///////////////////////
+struct ar0134 {
+		struct i2c_client *ar0134_client; 
+
+};
+
+static int ar0134_write_byte(const struct i2c_client *client, u16 reg_add, u8 data);
+static int ar0134_read_byte(const struct i2c_client *client,u16 reg_add);
+static int ar0134_register_write(const struct i2c_client *client,u16 reg_add,u16 data);
+static int ar0134_register_read(const struct i2c_client *client,u16 reg_add);
+static void ar0134_register_initialize(const struct i2c_client *client);
+
+
+
+
+
+
+
+static int ar0134_write_byte(const struct i2c_client *client, u16 reg_add, u8 data)
+{
+
+		char msg[3];
+		int ret;
+		
+		//i2c Address half word -> byte Converting
+		msg[0] = (u8)(reg_add >> 8);
+		msg[1] = (u8)(reg_add & 0xFF);
+
+		//i2c data (half word) -> byte convering
+		msg[2] = data;
+		
+
+	   printk("msg[0] : %x\r\n msg[1] : %x\r\nmsg[2] : %x\r\n",msg[0],msg[1],msg[2]);	
+		
+		ret = i2c_master_send(client,(char*)&msg,sizeof(msg)); // i2c,msage (address 2byte,data2byte),count
+		if (ret < 0){
+				printk("%s , %s,LINE: %d\r\n",__FILE__, __func__,__LINE__);
+				return ret;
+		}
+
+		return 0;
+}
+
+
+static int ar0134_read_byte(const struct i2c_client *client,u16 reg_add)
+{
+	char msg[4];
+	int ret;
+	//i2c Register Address
+	msg[0] = (u8)(reg_add >> 8);
+	msg[1] = (u8)(reg_add & 0xFF);
+	
+
+	ret = i2c_master_send(client,(char *) &msg, sizeof(msg));
+	if(ret < 0 )
+		printk("%s , %s,LINE: %d\r\n",__FILE__, __func__,__LINE__);	
+
+	ret = i2c_master_recv(client,msg,1); //address 2byte
+	if(ret != 1)
+        printk("%s , %s,LINE: %d\r\n",__FILE__, __func__,__LINE__);
+	
+	return (int)msg[0];
+
+}
+
+
+//2byte Data Write 
+//@reg_add : AR0134 Register Base Address 
+//@data : 2byte data Write
+//
+//ex: Register reg_add 0x3000 / data : 0xFFAA
+//	[Register] : [Value]	
+//  [0x3000]   : [0xFF] 
+//  [0x3001]   : [0xAA]
+
+static int ar0134_register_write(const struct i2c_client *client,u16 reg_add,u16 data)
+{
+	char data_h,data_l;
+	int ret;
+	data_h = (char)(data >> 8);
+	data_l = (char)(data & 0xFF);
+	ret = ar0134_write_byte (client, reg_add, data_h);
+	if (ret < 0){
+			printk("%s,LINE: %d\r\n",__func__,__LINE__);
+			return ret;
+	}
+
+	ret = ar0134_write_byte (client, reg_add+1, data_h);
+	if (ret < 0){
+			printk("%s,LINE: %d\r\n",__func__,__LINE__);
+			return ret;
+	}
+
+	return 0;
+}
+
+//2byte Data Read
+//@reg_add : AR0134 Register base address
+//retrun : negative : errono or Reg
+static int ar0134_register_read(const struct i2c_client *client,u16 reg_add)
+{
+	int ret=0;
+	int data=0;
+
+	ret = ar0134_read_byte(client,reg_add);
+	if (ret < 0){
+			printk("%s,LINE: %d\r\n",__func__,__LINE__);
+			return ret;
+	}
+
+	data =(ret << 8);
+
+	ret = ar0134_read_byte(client,reg_add+1);
+	if (ret < 0){
+			printk("%s,LINE: %d\r\n",__func__,__LINE__);
+			return ret;
+	}
+
+	data |= ret;
+
+	return data;
+}
+
+
+static void ar0134_register_initialize(const struct i2c_client *client)
+{
+		int i,data_temp;
+	
+#ifdef DEBUG_MODE	
+	printk("%s,%s\r\n",__FILE__,__func__);
+
+	
+	printk ("AR0134 CHIP_VERSION :0X%04x \r\n",ar0134_register_read(client,CHIP_VER));
+/*
+	for (i=0;i<10;i++)
+	{ 
+        data_temp = ar0134_register_read(client,CHIP_VER); 
+        printk("AR0134 CHIP Version Read For loop : %d\r\n",i);
+    }
+*/
+#endif
+
+}
+
+
+static int ar0134_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+{
+	
+
+	struct ar0134 *p_ar0134;
+	//struct i2c_adapter *adapter = to_i2c_adapter(i2c->dev.parent);
+
+	printk("ar0134 I2C Driver probe\r\n");
+
+	p_ar0134 = kzalloc(sizeof(struct ar0134), GFP_KERNEL);
+	if(!(p_ar0134))
+		return -ENOMEM;
+	
+	i2c_set_clientdata(i2c,p_ar0134);
+	p_ar0134->ar0134_client = i2c;
+
+	
+	
+	//AR0134 Image sensor Initialize
+	ar0134_register_initialize(p_ar0134->ar0134_client);
+
+	return 0;
+}
+
+
+static int ar0134_remove(struct i2c_client *i2c)
+{
+        //Memoey free
+		printk("%s",__func__);
+        kfree(i2c_get_clientdata(i2c));
+		return 0;
+
+}
+
+static const struct i2c_device_id ar0134_id[] = {
+			{ "ar0134", 0 },
+			{},
+			 };
+MODULE_DEVICE_TABLE(i2c, ar0134_id);
+
+
+
+static struct i2c_driver ar0134_driver = {
+			.driver = {
+						.owner	= THIS_MODULE,
+						.name	= "ar0134",
+			},
+			.probe		= ar0134_probe,
+			.remove		= ar0134_remove,
+			.id_table	= ar0134_id,
+};
+
+static int __init ar0134_init(void)
+{
+     //if maching device name - call probe function
+	 printk("%s,%d\r\n",__func__,__LINE__);
+     return i2c_add_driver(&ar0134_driver);
+}
+
+ 
+static void __exit ar0134_exit(void)
+{
+     printk("%s",__func__);	
+     i2c_del_driver(&ar0134_driver);
+}
+
+
+module_init(ar0134_init);
+module_exit(ar0134_exit);
+ 
+MODULE_DESCRIPTION("AR0134 I2C Control Driver"); 
+MODULE_AUTHOR("Seok Jung <sjung8432@pnstech.net> http://www.pnstech.co.kr");
+MODULE_LICENSE("Dual BSD/GPL");

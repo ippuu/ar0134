@@ -1,0 +1,6 @@
+#!/bin/bash
+sudo cp ../../../linux/include/media/ar0134.h ./
+sudo cp ar0134.c ../../../linux/drivers/misc/
+sudo cp ar0134.ko /mnt/smb && sync
+sudo cp ar0134.h /mnt/smb && sync
+sudo cp app_i2c.c /mnt/smb && sync
