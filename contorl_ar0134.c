@@ -28,7 +28,7 @@ enum CMD {READ_CMD = 1,
     MIRROR_MODE,            //10
     TRG_LIVE_MODE,          //11
     WINDOW_CTRL_MODE,       //12
-    AUTO_EXPOSURE_MODE,     //13
+    EXPOSURE_SETTING,     //13
     };
 
 
@@ -45,6 +45,7 @@ int Tigger_change(int *dev, ar0134_add_data *param);
 int Clock_setting(int *dev, ar0134_add_data *param);
 int Test_pattern_mode(int *dev, ar0134_add_data *param);
 int Gain_switch(int *dev, ar0134_add_data *param);
+int Exposure_setting(int *dev ,ar0134_add_data *param);
 void Press_any_key();
 
 
@@ -86,7 +87,7 @@ int main ()
         printf("[10]Mirror Mode\r\n");
         printf("[11]Trigger Mode / Video Mode Change\r\n");//Read Mode->Change Mode
         printf("[12]Window Control Mode\r\n");
-        printf("[13]Auto Exposure Mode\r\n");
+        printf("[13]Exposure Setting\r\n");
 
 
 		scanf("%d",&cnt);
@@ -208,7 +209,8 @@ int main ()
                 Press_any_key();
                 break;
 
-                case AUTO_EXPOSURE_MODE:      //13
+                case EXPOSURE_SETTING:      //13
+                Exposure_setting(&dev,&ar0134_param);
                 Press_any_key();
                 break;
 
@@ -249,11 +251,12 @@ int i2c_read(int *dev, ar0134_add_data *param)
     
     while(1)
           {
-              if(param->flag == 1)
+              if(param->flag == 1)              
               break;
 
               if (time_out>200) //1sec
                 {
+                    param->flag = 0;
                     return -1;//device fail
                 }
 
@@ -262,6 +265,7 @@ int i2c_read(int *dev, ar0134_add_data *param)
 
         }
 
+    param->flag = 0;
     return 0;
 
 }
@@ -278,6 +282,7 @@ int i2c_write(int *dev, ar0134_add_data *param)
 
         if (time_out>200) //1sec
         {
+            param->flag = 0;
             return -1;//device fail
         }
 
@@ -285,7 +290,10 @@ int i2c_write(int *dev, ar0134_add_data *param)
         time_out++;
     } //while
 
-        time_out = 0;
+    time_out = 0;
+    param->flag = 0;
+    return 0;
+    
 }
 
 int Resolution_change(int *dev, ar0134_add_data *param,int mode)
@@ -511,38 +519,37 @@ int Test_pattern_mode(int *dev, ar0134_add_data *param)
 {
     int key;
     int ret;
-    while(1)
+    
+    printf("Test Pattern Select\r\n");
+    printf("[0] Nomal operation(General Output)\r\n");
+    printf("[1]Solid Color test pattern\r\n");
+    printf("[2]Color Bar test Pattern\r\n");
+    printf("[3]fade to gray color bar test pattern\r\n");
+        
+        
+    scanf("%d",&key);
+        
+        
+        
+    //solid Color pattern
+    if ((  key >= 0 ) || ((  key <= 3 ) ))
     {
-        printf("Test Pattern Select\r\n");
-        printf("[0] Nomal operation(General Output)\r\n");
-        printf("[1]Solid Color test pattern\r\n");
-        printf("[2]100% Color Bar test Pattern\r\n");
-        printf("[3]fade to gray color bar test pattern\r\n");
-        
-        
-        scanf("%d",&key);
-        
-        
-        
-        //solid Color pattern
-        if ((  key >= 0 ) || ((  key <= 3 ) )
-        {
-            //1.Read TEST_PATTERN_MODE
-            //2. set Data
-            //3. write TEST_PATTERN_MODE Register
-            param->address = TEST_PATTERN_MODE;            
-            param->data = (unsigned short)key;
+        //1.Read TEST_PATTERN_MODE
+        //2. set Data
+        //3. write TEST_PATTERN_MODE Register
+        param->address = TEST_PATTERN_MODE;            
+        param->data = (unsigned short)key;
             
-            ret= i2c_write(&(*dev),&(*param));
-            if (ret < 0)
-                return -1;          
-        }        
+        ret= i2c_write(&(*dev),&(*param));
+        if (ret < 0)
+            return -1;          
+   }        
                 
-        else
-        {printf("Not valid !\r\n");}
+   else
+   {printf("Not valid !\r\n");}
         
-        key = 0;
-    }
+   key = 0;
+    
     
     return ret;
 }
@@ -567,6 +574,97 @@ void hex_to_bin(unsigned short hex)
     }
 
     printf("\r\n");
+}
+
+
+int Exposure_setting(int *dev ,ar0134_add_data *param)
+{
+    unsigned short p_mul,pre_pll,vt_sys,vt_pix;
+    unsigned short line_length_pck;
+    float row_time,pixel_clk,temp;
+    int user_input_exposure;
+    int ret;
+ 
+    printf("input exposure time(usec)\r\n");
+    do{scanf("%d",&user_input_exposure);} while(user_input_exposure > 0xffff);
+    
+    
+    //refer ar0134 Developer Guide Page 16
+    //1. Auto exposure Disable
+    //2. Pixel Clock Calculate.
+    //3. Read LINE_LEN_PCK(R0x300C)
+    //4. Calculate Row_Time
+        
+        
+        
+///////1. Auto exposure Disable
+    param->address = AE_CTRL_REG;
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+        
+    CLR_BIT(param->data,0); // ae_enable -> disable
+    
+    i2c_write(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+    
+
+    
+///////2. Pixel Clock Calculate.
+    param->address = PLL_MULTILIER;
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+    p_mul = param->data; // PLL MULTIPLIER READ Data
+    
+    param->address = PRE_PLL_CLK_DIV;  
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+    pre_pll = param->data;// PRE_PLL_CLK_DIV READ Data
+        
+    param->address = VT_SYS_CLK_DIV;
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+    vt_sys = param->data; //VT_SYS_CLK_DIV Read DATA
+    
+    param->address = VT_PIX_CLK_DIV;
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;
+    vt_pix= param->data; //VT_PIX_CLK_DIV Read Data
+
+    //calculrate Clock    
+    pixel_clk= (EXTENAL_CLK*p_mul) / (pre_pll*vt_sys*vt_pix);
+
+
+///////3. Read LINE_LEN_PCK(R0x300C)
+    param->address = LINE_LEN_PCK;
+    ret = i2c_read(&(*dev),&(*param));
+    if(ret <0 )
+        return -1;            
+    line_length_pck = param->data;
+        
+//////4. Calculate Row_Time        
+    row_time = (line_length_pck / pixel_clk);
+        
+
+///////5. User input Exposure time Setting (us)
+    //eq. (user input)exposure = coarse integration time * row_time
+    //coarse integration time = (user input) exposure / row_time
+    temp = user_input_exposure / row_time;
+    param->data = (unsigned short)temp;
+    param->address = COARSE_INTG_TIME;
+          
+    ret = i2c_write(&(*dev),&(*param));
+    if (ret < 0 )
+        return -1;
+        
+    printf("Pixel Clock : [%f], row time : [%f]\r\n",pixel_clk,row_time);
+
+    return 0;
 }
 
 int Gain_switch(int *dev, ar0134_add_data *param)
@@ -603,8 +701,9 @@ int Gain_switch(int *dev, ar0134_add_data *param)
 
 void Press_any_key()
 {
+    
     char temp[1];
     printf("Press Any Key.................\r\n");
-    scanf("%s",temp);
+    scanf("%s",temp);    
     system("clear");
 }
