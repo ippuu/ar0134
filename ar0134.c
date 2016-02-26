@@ -23,7 +23,7 @@
 
 ////////////////////////
 ////
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 //
 ///////////////////////
 struct ar0134 {
@@ -56,20 +56,19 @@ static int ar0134_write_byte(const struct i2c_client *client, u16 reg_add, u8 da
 
 		char msg[3];
 		int ret;
+
 		
 		//i2c Address half word -> byte Converting
-		msg[0] = (u8)(reg_add >> 8);
-		msg[1] = (u8)(reg_add & 0xFF);
+		msg[0] =(u8)(reg_add >> 8);
+		msg[1] =(u8)(reg_add & 0xFF);
 
-		//i2c data (half word) -> byte convering
+		
 		msg[2] = data;
 		
-
-	   printk(" msg[0] : %x\r\n msg[1] : %x\r\n msg[2] : %x\r\n",msg[0],msg[1],msg[2]);	
-		
-		ret = i2c_master_send(client,(char*)&msg,sizeof(msg)); // i2c,msage (address 2byte,data2byte),count
+	   
+		ret = i2c_master_send(client,(char *)&msg,sizeof(msg)); // i2c,msage (address 2byte,data2byte),count
 		if (ret < 0){
-				printk("Write Err : %s,LINE: %d\r\n", __func__,__LINE__);
+				printk("Write Err : %s,LINE: %d\r\n", __func__,__LINE__);				
 				return ret;
 		}
 
@@ -79,7 +78,7 @@ static int ar0134_write_byte(const struct i2c_client *client, u16 reg_add, u8 da
 
 static int ar0134_read_byte(const struct i2c_client *client,u16 reg_add)
 {
-	char msg[4];
+	char msg[2];
 	int ret;
 	//i2c Register Address
 	msg[0] = (u8)(reg_add >> 8);
@@ -196,7 +195,7 @@ static int ar0134_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	
     //struct ar0134 *p_ar0134;
 	
-	//struct i2c_adapter *adapter = to_i2c_adapter(i2c->dev.parent);
+	struct i2c_adapter *adapter = i2c->adapter;
 
 	printk("ar0134 I2C Driver probe\r\n");
 
@@ -206,6 +205,10 @@ static int ar0134_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	
 	i2c_set_clientdata(i2c,p_ar0134);
 	p_ar0134->ar0134_client = i2c;
+    p_ar0134->ar0134_client->adapter = adapter;
+	printk("adapter address change before :0x%x \r\n",p_ar0134->ar0134_client->addr);
+	p_ar0134->ar0134_client->addr = (0x20>>1); //ar0134 address
+	printk("adapter address :0x%x \r\n",p_ar0134->ar0134_client->addr);
 
 	
 	
@@ -278,8 +281,7 @@ static long ar0134_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         //Read Register value
         printk("application require Address : [%04x]\r\n",ar0134_param.address);
         
-        ar0134_param.address = ar0134_register_read(p_ar0134->ar0134_client,ar0134_param.address);
-        ar0134_param.data = ar0134_register_read(p_ar0134->ar0134_client,ar0134_param.address);
+        ar0134_param.data = ar0134_register_read(p_ar0134->ar0134_client,ar0134_param.address);        
         ar0134_param.flag = 1; //data wire complete flag (User area check flag)
         printk("Read Address : [%04x]\r\n Read Data : [%04x]\r\n",ar0134_param.address,ar0134_param.data);
                 
@@ -296,8 +298,11 @@ static long ar0134_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         //write Register data
         ar0134_register_write(p_ar0134->ar0134_client,ar0134_param.address,ar0134_param.data);
         
+        printk("Write Address : [%04x]\r\n Write Data : [%04x]\r\n",ar0134_param.address,ar0134_param.data);
+        
+        
         //read from register
-        ar0134_param.data = ar0134_register_read(p_ar0134->ar0134_client,ar0134_param.address);
+        //ar0134_param.data = ar0134_register_read(p_ar0134->ar0134_client,ar0134_param.address);
         
         //data wire complete flag (User area check flag)
         ar0134_param.flag = 1; 

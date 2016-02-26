@@ -4,7 +4,7 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
-
+#include <termios.h>
 #include "ar0134.h"
 
 #define DEVICE_FILE "/dev/ar0134_misc"
@@ -22,8 +22,8 @@ enum CMD {READ_CMD = 1,
     SXGA_MODE,              //4
     CLOCK_SETTING_MODE,     //5
     GAIN_SETTING,           //6
-    TEST_PT_COLRO_BAR,      //7
-    TEST_PT_SOLID_BAR,      //8
+    TEST_PT,                  //7
+    RESERVED1,               //8
     FLIP_MODE,              //9
     MIRROR_MODE,            //10
     TRG_LIVE_MODE,          //11
@@ -46,12 +46,16 @@ int Clock_setting(int *dev, ar0134_add_data *param);
 int Test_pattern_mode(int *dev, ar0134_add_data *param);
 int Gain_switch(int *dev, ar0134_add_data *param);
 int Exposure_setting(int *dev ,ar0134_add_data *param);
-void Press_any_key();
+int Mirror_mode(int *dev,ar0134_add_data *param);
+int Roi_mode(int *dev,ar0134_add_data *param);
 
+void Press_any_key();
+int getch(void);
 
 
 int main ()
 {
+    system("clear");
     ar0134_add_data ar0134_param;
 
 
@@ -76,14 +80,14 @@ int main ()
    ============================================\r\n\r\n");
 
         printf("[1]Address Read\r\n");
-		printf("[2]Address Data Write\r\n");
+        printf("[2]Address Data Write\r\n");
         printf("[3]Resolution Change 640*480\r\n");
-		printf("[4]Resolution Change 1280*960\r\n");
+        printf("[4]Resolution Change 1280*960\r\n");
         printf("[5]System Clock Setting\r\n");
         printf("[6]Gain Setting \r\n"); //R,G,B , or
-        printf("[7]Test Pattern Corlor Bar Mode\r\n");
-        printf("[8]Test Pattern Solide Mode\r\n");
-        printf("[9]Filp Mode\r\n");
+        printf("[7]Test Pattern Mode\r\n");
+        printf("[8]ROI Mode\r\n");
+        printf("[9]\r\n");
         printf("[10]Mirror Mode\r\n");
         printf("[11]Trigger Mode / Video Mode Change\r\n");//Read Mode->Change Mode
         printf("[12]Window Control Mode\r\n");
@@ -121,7 +125,7 @@ int main ()
 
                 printf ("put register DATA (hex value)\r\n");
                 do{scanf("%04x",&data_temp);}while(data_temp>0xFFFF);
-                ar0134_param.data = (unsigned char)data_temp;
+                ar0134_param.data = (unsigned short)data_temp;
 
 
                 ioctl(dev,WRITE_DATA,&ar0134_param);
@@ -132,12 +136,12 @@ int main ()
                     usleep(1000);
                 }
 
-                if(ar0134_param.data != (unsigned char)data_temp)
-                {
-                        printf ("Write Fail!!- data value : [%04x]\r\n",ar0134_param.data);
-                }
+                //if(ar0134_param.data != (unsigned char)data_temp)
+                //{
+               //       printf ("Write Fail!!- data value : [%04x]\r\n",ar0134_param.data);
+               // }
 
-                else {printf("Write Success - Verify ok!!\r\n");}
+               // else {printf("Write Success - Verify ok!!\r\n");}
                 Press_any_key();
                 break;
 
@@ -178,7 +182,7 @@ int main ()
                 Press_any_key();
                 break;
 
-                case TEST_PT_COLRO_BAR:      //7
+                case TEST_PT:      //7
                 if (Test_pattern_mode(&dev,&ar0134_param) < 0)
                 {
                     printf("test pattern Mode Setting Fail");
@@ -186,7 +190,7 @@ int main ()
                 Press_any_key();
                 break;
 
-                case TEST_PT_SOLID_BAR:      //8
+                case RESERVED1:      //8
                 Press_any_key();
                 break;
 
@@ -206,6 +210,7 @@ int main ()
                 break;
 
                 case WINDOW_CTRL_MODE:       //12
+                //Roi_mode
                 Press_any_key();
                 break;
 
@@ -405,7 +410,7 @@ int Clock_setting(int *dev, ar0134_add_data *param)
     //vt sys_clk div : 0x302C - VT_SYS_CLK_DIV
     //vt pix clk div : 0x302A - VT_PIX_CLK_DIV
 
-    param->address = PLL_MULTILIER;  
+    param->address = PLL_MULTILIER; 
     ret = i2c_read(&(*dev),&(*param));
     if(ret <0 )
         return -1;
@@ -584,86 +589,109 @@ int Exposure_setting(int *dev ,ar0134_add_data *param)
     float row_time,pixel_clk,temp;
     int user_input_exposure;
     int ret;
+    int key;
  
-    printf("input exposure time(usec)\r\n");
-    do{scanf("%d",&user_input_exposure);} while(user_input_exposure > 0xffff);
+    printf("[1] autoexposure\r\n");
+    printf("[2] Exposure value Setting (manual)\r\n");
+    printf("[3] Exit\r\n");
+    
+    scanf("%d",&key);
+ 
+    if (key == 1)
+    {
+        ///////1. Auto exposure Disable
+        param->address = AE_CTRL_REG;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        SET_BIT(param->data,0); // ae_enable
+        i2c_write(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+    }
+ 
+    else if(key == 2)
+    {
+ 
+        printf("input exposure time(usec)\r\n");
+        do{scanf("%d",&user_input_exposure);} while(user_input_exposure > 0xffff);
+        
+        
+        //refer ar0134 Developer Guide Page 16
+        //1. Auto exposure Disable
+        //2. Pixel Clock Calculate.
+        //3. Read LINE_LEN_PCK(R0x300C)
+        //4. Calculate Row_Time
+            
+            
+            
+    ///////1. Auto exposure Disable
+        param->address = AE_CTRL_REG;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        CLR_BIT(param->data,0); // ae_enable -> disable
+        i2c_write(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        
+    
+        
+    ///////2. Pixel Clock Calculate.
+        param->address = PLL_MULTILIER;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        p_mul = param->data; // PLL MULTIPLIER READ Data
+        
+        param->address = PRE_PLL_CLK_DIV;  
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        pre_pll = param->data;// PRE_PLL_CLK_DIV READ Data
+            
+        param->address = VT_SYS_CLK_DIV;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        vt_sys = param->data; //VT_SYS_CLK_DIV Read DATA
+        
+        param->address = VT_PIX_CLK_DIV;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;
+        vt_pix= param->data; //VT_PIX_CLK_DIV Read Data
+    
+        //calculrate Clock    
+        pixel_clk= (EXTENAL_CLK*p_mul) / (pre_pll*vt_sys*vt_pix);
     
     
-    //refer ar0134 Developer Guide Page 16
-    //1. Auto exposure Disable
-    //2. Pixel Clock Calculate.
-    //3. Read LINE_LEN_PCK(R0x300C)
-    //4. Calculate Row_Time
-        
-        
-        
-///////1. Auto exposure Disable
-    param->address = AE_CTRL_REG;
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
-        
-    CLR_BIT(param->data,0); // ae_enable -> disable
+    ///////3. Read LINE_LEN_PCK(R0x300C)
+        param->address = LINE_LEN_PCK;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret <0 )
+            return -1;            
+        line_length_pck = param->data;
+            
+    //////4. Calculate Row_Time        
+        row_time = (line_length_pck / pixel_clk);
+            
     
-    i2c_write(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
+    ///////5. User input Exposure time Setting (us)
+        //eq. (user input)exposure = coarse integration time * row_time
+        //coarse integration time = (user input) exposure / row_time
+        temp = user_input_exposure / row_time;
+        param->data = (unsigned short)temp;
+        param->address = COARSE_INTG_TIME;
+              
+        ret = i2c_write(&(*dev),&(*param));
+        if (ret < 0 )
+            return -1;
+            
+        printf("Pixel Clock : [%f], row time : [%f] ,integration time (short type)[%d]\r\n line_length_pck : [%d]\r\n",pixel_clk,row_time,(unsigned short)temp,line_length_pck);
+    }
     
-
-    
-///////2. Pixel Clock Calculate.
-    param->address = PLL_MULTILIER;
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
-    p_mul = param->data; // PLL MULTIPLIER READ Data
-    
-    param->address = PRE_PLL_CLK_DIV;  
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
-    pre_pll = param->data;// PRE_PLL_CLK_DIV READ Data
-        
-    param->address = VT_SYS_CLK_DIV;
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
-    vt_sys = param->data; //VT_SYS_CLK_DIV Read DATA
-    
-    param->address = VT_PIX_CLK_DIV;
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;
-    vt_pix= param->data; //VT_PIX_CLK_DIV Read Data
-
-    //calculrate Clock    
-    pixel_clk= (EXTENAL_CLK*p_mul) / (pre_pll*vt_sys*vt_pix);
-
-
-///////3. Read LINE_LEN_PCK(R0x300C)
-    param->address = LINE_LEN_PCK;
-    ret = i2c_read(&(*dev),&(*param));
-    if(ret <0 )
-        return -1;            
-    line_length_pck = param->data;
-        
-//////4. Calculate Row_Time        
-    row_time = (line_length_pck / pixel_clk);
-        
-
-///////5. User input Exposure time Setting (us)
-    //eq. (user input)exposure = coarse integration time * row_time
-    //coarse integration time = (user input) exposure / row_time
-    temp = user_input_exposure / row_time;
-    param->data = (unsigned short)temp;
-    param->address = COARSE_INTG_TIME;
-          
-    ret = i2c_write(&(*dev),&(*param));
-    if (ret < 0 )
-        return -1;
-        
-    printf("Pixel Clock : [%f], row time : [%f]\r\n",pixel_clk,row_time);
-
+    else{}
     return 0;
 }
 
@@ -699,11 +727,107 @@ int Gain_switch(int *dev, ar0134_add_data *param)
 
 }
 
+
+int Mirror_mode(int *dev,ar0134_add_data *param)
+{
+    int ret;
+    int key;
+    unsigned short read_mode_data;
+    unsigned short datapath_select_data;
+    //READ_MODE register (0x3040) 
+    printf("select Mirror Mode\r\n");
+    printf("[1]Normal Mode\r\n"); // bit 14/15 : clear
+    printf("[2]Column Mirror\r\n"); //bit 14 : Set
+    printf("[3]Row Mirror\r\n"); //bit 15 : Set
+    
+    
+    do{scanf("%d",&key);}while(key > 3);
+    
+    
+    
+    param->address = READ_MODE;    
+    ret = i2c_read(&(*dev),&(*param));
+    if (ret < 0)
+        return ret;
+
+    
+    
+    if (key == 1)
+    {
+        //READ Mode Register [14] / [15] bit clear
+        CLR_BIT(param->data,14); // horizone mirror
+        CLR_BIT(param->data,15); // vertical
+    
+        ret = i2c_write(&(*dev),&(*param));
+        if (ret < 0 )
+            return ret;
+        
+        //DATAPATH_SELECT[4] : clear
+        param->address = DATAPATH_SELECT;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret < 0)
+            return ret;
+            
+        CLR_BIT(param->data, 4); ////DATAPATH_SELECT[4] : clear
+        ret = i2c_write(&(*dev),&(*param));
+        if (ret < 0)
+            return ret;        
+    }
+    
+    else if ((key == 2) || (key == 3))
+    {
+        SET_BIT(param->data,(unsigned short)key+12);
+        ret = i2c_write(&(*dev),&(*param));
+        if (ret < 0 )
+            return ret;
+        
+        //DATAPATH_SELECT[4] : clear
+        param->address = DATAPATH_SELECT;
+        ret = i2c_read(&(*dev),&(*param));
+        if(ret < 0)
+            return ret;
+            
+        SET_BIT(param->data, 4); ////DATAPATH_SELECT[4] : clear
+        ret = i2c_write(&(*dev),&(*param));
+        if (ret < 0)
+            return ret;        
+    }
+    
+    
+    else{}
+    
+    
+}
+int Roi_mode(int *dev,ar0134_add_data *param)
+{
+    
+}
+
+
 void Press_any_key()
 {
     
     char temp[1];
     printf("Press Any Key.................\r\n");
+    fflush(stdin);
     scanf("%s",temp);    
+   
     system("clear");
 }
+
+int getch(void)  
+{  
+  int ch;  
+  struct termios buf;  
+  struct termios save;  
+  
+   tcgetattr(0, &save);  
+   buf = save;  
+   buf.c_lflag &= ~(ICANON|ECHO);  
+   buf.c_cc[VMIN] = 1;  
+   buf.c_cc[VTIME] = 0;  
+   tcsetattr(0, TCSAFLUSH, &buf);  
+   ch = getchar();  
+   tcsetattr(0, TCSAFLUSH, &save);  
+   return ch;  
+}  
